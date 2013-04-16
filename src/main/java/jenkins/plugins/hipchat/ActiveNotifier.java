@@ -12,7 +12,9 @@ import hudson.scm.ChangeLogSet.Entry;
 import java.util.HashSet;
 import java.util.LinkedList;
 import java.util.List;
+import java.util.ArrayList;
 import java.util.Set;
+import java.util.Map;
 import java.util.logging.Logger;
 
 import org.apache.commons.lang.StringUtils;
@@ -45,8 +47,10 @@ public class ActiveNotifier implements FineGrainedNotifier {
       }
       else if(cause != null) {
          MessageBuilder message = new MessageBuilder(notifier, build);
+         message.appendParameters();
+         message.append(" - ");
          message.append(cause.getShortDescription());
-         notifyStart(build, message.appendOpenLink().toString());
+         notifyStart(build, message.toString());
       }
       else {
          notifyStart(build, getBuildStatusMessage(build));
@@ -86,12 +90,14 @@ public class ActiveNotifier implements FineGrainedNotifier {
          authors.add(entry.getAuthor().getDisplayName());
       }
       MessageBuilder message = new MessageBuilder(notifier, r);
+      message.appendParameters();
+      message.append(" - ");
       message.append("Started by changes from ");
       message.append(StringUtils.join(authors, ", "));
       message.append(" (");
       message.append(files.size());
       message.append(" file(s) changed)");
-      return message.appendOpenLink().toString();
+      return message.toString();
    }
 
    static String getBuildColor(AbstractBuild r) {
@@ -109,9 +115,11 @@ public class ActiveNotifier implements FineGrainedNotifier {
 
    String getBuildStatusMessage(AbstractBuild r) {
       MessageBuilder message = new MessageBuilder(notifier, r);
+      message.appendParameters();
+      message.append(" - ");
       message.appendStatusMessage();
       message.appendDuration();
-      return message.appendOpenLink().toString();
+      return message.toString();
    }
 
    public static class MessageBuilder {
@@ -155,18 +163,28 @@ public class ActiveNotifier implements FineGrainedNotifier {
       }
 
       private MessageBuilder startMessage() {
+         String url = notifier.getJenkinsUrl() + build.getUrl();
+         message.append("<a href='").append(url).append("'>");
          message.append(build.getProject().getDisplayName());
-         message.append(" - ");
+         message.append(" ");
          message.append(build.getDisplayName());
+         message.append("</a>");
          message.append(" ");
          return this;
       }
 
-      public MessageBuilder appendOpenLink() {
-         String url = notifier.getJenkinsUrl() + build.getUrl();
-         message.append(" (<a href='").append(url).append("'>Open</a>)");
-         return this;
-      }
+       public MessageBuilder appendParameters() {
+           Map<String, String> buildVariables = build.getBuildVariables();
+           if (buildVariables.size() == 0) {
+               return this;
+           }
+           List<String> parameters = new ArrayList<String>();
+           for (Map.Entry<String, String> variable : buildVariables.entrySet()) {
+               parameters.add(variable.getKey() + "=" + variable.getValue());
+           }
+           message.append(" [").append(StringUtils.join(parameters, ", ")).append("]");
+           return this;
+       }
 
       public MessageBuilder appendDuration() {
          message.append(" after ");
