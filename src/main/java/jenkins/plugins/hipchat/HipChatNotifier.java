@@ -143,11 +143,13 @@ public class HipChatNotifier extends Notifier {
    public static class HipChatJobProperty extends hudson.model.JobProperty<AbstractProject<?, ?>> {
       private String room;
       private boolean startNotification;
+      private String customMessage;
 
       @DataBoundConstructor
-      public HipChatJobProperty(String room, boolean startNotification) {
+      public HipChatJobProperty(String room, boolean startNotification, String customMessage) {
          this.room = room;
          this.startNotification = startNotification;
+         this.customMessage = customMessage;
       }
 
       @Exported
@@ -160,6 +162,11 @@ public class HipChatNotifier extends Notifier {
          return startNotification;
       }
 
+       @Exported
+       public String getCustomMessage() {
+           return customMessage;
+       }
+
       @Override
       public boolean prebuild(AbstractBuild<?, ?> build, BuildListener listener) {
          if(startNotification) {
@@ -167,7 +174,7 @@ public class HipChatNotifier extends Notifier {
             for(Publisher publisher : map.values()) {
                if(publisher instanceof HipChatNotifier) {
                   logger.info("Invoking Started...");
-                  new ActiveNotifier((HipChatNotifier)publisher).started(build);
+                  new ActiveNotifier((HipChatNotifier)publisher).started(build, listener);
                }
             }
          }
@@ -187,7 +194,7 @@ public class HipChatNotifier extends Notifier {
 
          @Override
          public HipChatJobProperty newInstance(StaplerRequest sr, JSONObject formData) throws hudson.model.Descriptor.FormException {
-            return new HipChatJobProperty(sr.getParameter("hipChatProjectRoom"), sr.getParameter("hipChatStartNotification") != null);
+            return new HipChatJobProperty(sr.getParameter("hipChatProjectRoom"), sr.getParameter("hipChatStartNotification") != null, sr.getParameter("hipChatCustomMessage"));
          }
       }
    }

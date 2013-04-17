@@ -1,10 +1,12 @@
 package jenkins.plugins.hipchat;
 
+import hudson.EnvVars;
 import hudson.Util;
 import hudson.model.Result;
 import hudson.model.AbstractBuild;
 import hudson.model.AbstractProject;
 import hudson.model.CauseAction;
+import hudson.model.TaskListener;
 import hudson.scm.ChangeLogSet;
 import hudson.scm.ChangeLogSet.AffectedFile;
 import hudson.scm.ChangeLogSet.Entry;
@@ -12,9 +14,7 @@ import hudson.scm.ChangeLogSet.Entry;
 import java.util.HashSet;
 import java.util.LinkedList;
 import java.util.List;
-import java.util.ArrayList;
 import java.util.Set;
-import java.util.Map;
 import java.util.logging.Logger;
 
 import org.apache.commons.lang.StringUtils;
@@ -39,21 +39,21 @@ public class ActiveNotifier implements FineGrainedNotifier {
 
    public void deleted(AbstractBuild r) {}
 
-   public void started(AbstractBuild build) {
-      String changes = getChanges(build);
+   public void started(AbstractBuild build, TaskListener listener) {
+      String changes = getChanges(build, listener);
       CauseAction cause = build.getAction(CauseAction.class);
       if(changes != null) {
          notifyStart(build, changes);
       }
       else if(cause != null) {
          MessageBuilder message = new MessageBuilder(notifier, build);
-         message.appendParameters();
+         message.appendCustomMessage(listener);
          message.append(" - ");
          message.append(cause.getShortDescription());
          notifyStart(build, message.toString());
       }
       else {
-         notifyStart(build, getBuildStatusMessage(build));
+         notifyStart(build, getBuildStatusMessage(build, listener));
       }
    }
 
@@ -63,11 +63,11 @@ public class ActiveNotifier implements FineGrainedNotifier {
 
     public void finalized(AbstractBuild r) {}
 
-   public void completed(AbstractBuild r) {
-      getHipChat(r).publish(getBuildStatusMessage(r), getBuildColor(r));
+   public void completed(AbstractBuild r, TaskListener listener) {
+      getHipChat(r).publish(getBuildStatusMessage(r, listener), getBuildColor(r));
    }
 
-   String getChanges(AbstractBuild r) {
+   String getChanges(AbstractBuild r, TaskListener listener) {
       if(!r.hasChangeSetComputed()) {
          logger.info("No change set computed...");
          return null;
@@ -90,7 +90,7 @@ public class ActiveNotifier implements FineGrainedNotifier {
          authors.add(entry.getAuthor().getDisplayName());
       }
       MessageBuilder message = new MessageBuilder(notifier, r);
-      message.appendParameters();
+      message.appendCustomMessage(listener);
       message.append(" - ");
       message.append("Started by changes from ");
       message.append(StringUtils.join(authors, ", "));
@@ -113,9 +113,9 @@ public class ActiveNotifier implements FineGrainedNotifier {
       }
    }
 
-   String getBuildStatusMessage(AbstractBuild r) {
+   String getBuildStatusMessage(AbstractBuild r, TaskListener listener) {
       MessageBuilder message = new MessageBuilder(notifier, r);
-      message.appendParameters();
+      message.appendCustomMessage(listener);
       message.append(" - ");
       message.appendStatusMessage();
       message.appendDuration();
@@ -173,17 +173,28 @@ public class ActiveNotifier implements FineGrainedNotifier {
          return this;
       }
 
-       public MessageBuilder appendParameters() {
-           Map<String, String> buildVariables = build.getBuildVariables();
-           if (buildVariables.size() == 0) {
+       public MessageBuilder appendCustomMessage(TaskListener listener) {
+           HipChatNotifier.HipChatJobProperty hipChatJobConfig = (HipChatNotifier.HipChatJobProperty) build.getProject().getProperty(HipChatNotifier.HipChatJobProperty.class);
+           String customMessage = hipChatJobConfig.getCustomMessage();
+           if (StringUtils.isBlank(customMessage)) {
                return this;
            }
-           List<String> parameters = new ArrayList<String>();
-           for (Map.Entry<String, String> variable : buildVariables.entrySet()) {
-               parameters.add(variable.getKey() + "=" + variable.getValue());
-           }
-           message.append(" [").append(StringUtils.join(parameters, ", ")).append("]");
+
+           // Expand variables if applicable
+           customMessage = resolveVariablesForMessage(customMessage, listener);
+
+           message.append(" (").append(customMessage).append(")");
            return this;
+       }
+
+       private String resolveVariablesForMessage(String message, TaskListener listener) {
+           try {
+               EnvVars env = build.getEnvironment(listener);
+               return env != null ? env.expand(message) : message;
+           } catch (Exception e) {
+               logger.warning("Could not resolve listener for build " + build.getProject().getName());
+               return message;
+           }
        }
 
       public MessageBuilder appendDuration() {

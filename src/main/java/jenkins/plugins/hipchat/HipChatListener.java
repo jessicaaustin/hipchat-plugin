@@ -23,7 +23,7 @@ public class HipChatListener extends RunListener<AbstractBuild> {
 
    @Override
    public void onCompleted(AbstractBuild r, TaskListener listener) {
-      getNotifier(r.getProject()).completed(r);
+      getNotifier(r.getProject()).completed(r, listener);
       super.onCompleted(r, listener);
    }
 
