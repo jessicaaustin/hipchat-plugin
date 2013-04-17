@@ -1,7 +1,5 @@
 package jenkins.plugins.hipchat;
 
-import hudson.EnvVars;
-import hudson.Util;
 import hudson.model.Result;
 import hudson.model.AbstractBuild;
 import hudson.model.AbstractProject;
@@ -31,9 +29,9 @@ public class ActiveNotifier implements FineGrainedNotifier {
       this.notifier = notifier;
    }
 
-   private HipChatService getHipChat(AbstractBuild r) {
+   private HipChatService getHipChat(AbstractBuild r, TaskListener listener) {
       AbstractProject<?, ?> project = r.getProject();
-      String projectRoom = Util.fixEmpty(project.getProperty(HipChatNotifier.HipChatJobProperty.class).getRoom());
+      String projectRoom = notifier.resolveRoom(notifier.resolveVariables(project.getProperty(HipChatNotifier.HipChatJobProperty.class).getRoom(), r, listener));
       return notifier.newHipChatService(projectRoom);
    }
 
@@ -43,28 +41,28 @@ public class ActiveNotifier implements FineGrainedNotifier {
       String changes = getChanges(build, listener);
       CauseAction cause = build.getAction(CauseAction.class);
       if(changes != null) {
-         notifyStart(build, changes);
+         notifyStart(build, listener, changes);
       }
       else if(cause != null) {
          MessageBuilder message = new MessageBuilder(notifier, build);
          message.appendCustomMessage(listener);
          message.append(" - ");
          message.append(cause.getShortDescription());
-         notifyStart(build, message.toString());
+         notifyStart(build, listener, message.toString());
       }
       else {
-         notifyStart(build, getBuildStatusMessage(build, listener));
+         notifyStart(build, listener, getBuildStatusMessage(build, listener));
       }
    }
 
-   private void notifyStart(AbstractBuild build, String message) {
-      getHipChat(build).publish(message, "green");
+   private void notifyStart(AbstractBuild build, TaskListener listener, String message) {
+      getHipChat(build, listener).publish(message, "green");
    }
 
     public void finalized(AbstractBuild r) {}
 
    public void completed(AbstractBuild r, TaskListener listener) {
-      getHipChat(r).publish(getBuildStatusMessage(r, listener), getBuildColor(r));
+      getHipChat(r, listener).publish(getBuildStatusMessage(r, listener), getBuildColor(r));
    }
 
    String getChanges(AbstractBuild r, TaskListener listener) {
@@ -181,21 +179,12 @@ public class ActiveNotifier implements FineGrainedNotifier {
            }
 
            // Expand variables if applicable
-           customMessage = resolveVariablesForMessage(customMessage, listener);
+           customMessage = notifier.resolveVariables(customMessage, build, listener);
 
            message.append(" (").append(customMessage).append(")");
            return this;
        }
 
-       private String resolveVariablesForMessage(String message, TaskListener listener) {
-           try {
-               EnvVars env = build.getEnvironment(listener);
-               return env != null ? env.expand(message) : message;
-           } catch (Exception e) {
-               logger.warning("Could not resolve listener for build " + build.getProject().getName());
-               return message;
-           }
-       }
 
       public MessageBuilder appendDuration() {
          message.append(" after ");

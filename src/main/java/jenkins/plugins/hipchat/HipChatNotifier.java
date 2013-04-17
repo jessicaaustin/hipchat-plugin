@@ -1,5 +1,6 @@
 package jenkins.plugins.hipchat;
 
+import hudson.EnvVars;
 import hudson.Extension;
 import hudson.Launcher;
 import hudson.model.BuildListener;
@@ -8,20 +9,27 @@ import hudson.model.JobPropertyDescriptor;
 import hudson.model.AbstractBuild;
 import hudson.model.AbstractProject;
 import hudson.model.Job;
+import hudson.model.TaskListener;
 import hudson.tasks.BuildStepDescriptor;
 import hudson.tasks.BuildStepMonitor;
 import hudson.tasks.Notifier;
 import hudson.tasks.Publisher;
 
 import java.io.IOException;
+import java.util.HashMap;
 import java.util.Map;
 import java.util.logging.Logger;
 
 import net.sf.json.JSONObject;
 
+import org.apache.commons.lang.StringUtils;
 import org.kohsuke.stapler.DataBoundConstructor;
 import org.kohsuke.stapler.StaplerRequest;
 import org.kohsuke.stapler.export.Exported;
+
+import static org.apache.commons.lang.StringUtils.chomp;
+import static org.apache.commons.lang.StringUtils.split;
+import static org.apache.commons.lang.StringUtils.strip;
 
 @SuppressWarnings({ "unchecked" })
 public class HipChatNotifier extends Notifier {
@@ -31,6 +39,7 @@ public class HipChatNotifier extends Notifier {
    private String jenkinsUrl;
    private String authToken;
    private String room;
+   private Map<String, String> roomsByHost;
 
    @Override
    public DescriptorImpl getDescriptor() {
@@ -49,6 +58,10 @@ public class HipChatNotifier extends Notifier {
       return jenkinsUrl;
    }
 
+    public Map<String, String> getRoomsByHost() {
+        return roomsByHost;
+    }
+
    public void setJenkinsUrl(String jenkinsUrl) {
       this.jenkinsUrl = jenkinsUrl;
    }
@@ -61,12 +74,17 @@ public class HipChatNotifier extends Notifier {
       this.room = room;
    }
 
+    public void setRoomsByHost(Map<String, String> roomsByHost) {
+        this.roomsByHost = roomsByHost;
+    }
+
    @DataBoundConstructor
-   public HipChatNotifier(String authToken, String room, String jenkinsUrl) {
+   public HipChatNotifier(String authToken, String room, String jenkinsUrl, Map<String, String> roomsByHost) {
       super();
       this.authToken = authToken;
       this.jenkinsUrl = jenkinsUrl;
       this.room = room;
+      this.roomsByHost = roomsByHost;
    }
 
    public BuildStepMonitor getRequiredMonitorService() {
@@ -87,6 +105,7 @@ public class HipChatNotifier extends Notifier {
       private String token;
       private String room;
       private String jenkinsUrl;
+      private String roomsByHostText;
 
       public DescriptorImpl() {
          load();
@@ -104,6 +123,10 @@ public class HipChatNotifier extends Notifier {
          return jenkinsUrl;
       }
 
+       public String getRoomsByHostText() {
+           return roomsByHostText;
+       }
+
       public boolean isApplicable(Class<? extends AbstractProject> aClass) {
          return true;
       }
@@ -113,7 +136,8 @@ public class HipChatNotifier extends Notifier {
          if(token == null) token = sr.getParameter("hipChatToken");
          if(jenkinsUrl == null) jenkinsUrl = sr.getParameter("hipChatJenkinsUrl");
          if(room == null) room = sr.getParameter("hipChatRoom");
-         return new HipChatNotifier(token, room, jenkinsUrl);
+         if(roomsByHostText == null) roomsByHostText = sr.getParameter("hipChatRoomsByHostText");
+         return new HipChatNotifier(token, room, jenkinsUrl, createRoomsByHostMap(roomsByHostText));
       }
 
       @Override
@@ -124,8 +148,9 @@ public class HipChatNotifier extends Notifier {
          if(jenkinsUrl != null && !jenkinsUrl.endsWith("/")) {
             jenkinsUrl = jenkinsUrl + "/";
          }
+         roomsByHostText = sr.getParameter("hipChatRoomsByHostText");
          try {
-            new HipChatNotifier(token, room, jenkinsUrl);
+            new HipChatNotifier(token, room, jenkinsUrl, createRoomsByHostMap(roomsByHostText));
          }
          catch(Exception e) {
             throw new FormException("Failed to initialize notifier - check your global notifier configuration settings", e, "");
@@ -134,10 +159,44 @@ public class HipChatNotifier extends Notifier {
          return super.configure(sr, formData);
       }
 
+       private Map<String, String> createRoomsByHostMap(String roomsByHostText) {
+           logger.info("Creating rooms by host mapping for\n" + roomsByHostText + "\n");
+           Map<String, String> map = new HashMap<String, String>();
+           for (String hostMapping : roomsByHostText.split("\n")) {
+               map.put(strip(chomp(split(hostMapping, "=")[0])), strip(chomp(split(hostMapping, "=")[1])));
+           }
+           return map;
+       }
+       
       @Override
       public String getDisplayName() {
          return "HipChat Notifications";
       }
+   }
+
+    public String resolveVariables(String message, AbstractBuild build, TaskListener listener) {
+        if (StringUtils.isBlank(message)) {
+            return "";
+        }
+
+        try {
+            EnvVars env = build.getEnvironment(listener);
+            return env != null ? env.expand(message) : message;
+        } catch (Exception e) {
+            logger.warning("Could not resolve listener for build " + build.getProject().getName());
+            return message;
+        }
+    }
+
+    public String resolveRoom(String parameter) {
+        for (String host : roomsByHost.keySet()) {
+            if (StringUtils.equals(host, parameter)) {
+                logger.info("Room for " + parameter + " resolved to " + roomsByHost.get(host));
+                return roomsByHost.get(host);
+            }
+        }
+        logger.info("Room id = " + parameter);
+        return parameter;
    }
 
    public static class HipChatJobProperty extends hudson.model.JobProperty<AbstractProject<?, ?>> {

@@ -21,5 +21,8 @@
     <f:entry title="Jenkins URL" help="${rootURL}/plugin/hipchat/help-globalConfig-hipChatJenkinsUrl.html">
         <f:textbox name="hipChatJenkinsUrl" value="${descriptor.getJenkinsUrl()}" />
     </f:entry>
+    <f:entry title="Rooms by Parameter" help="${rootURL}/plugin/hipchat/help-globalConfig-hipChatRoomsByHost.html">
+        <f:textarea name="hipChatRoomsByHostText" value="${descriptor.getRoomsByHostText()}" />
+    </f:entry>
   </f:section>
 </j:jelly>
