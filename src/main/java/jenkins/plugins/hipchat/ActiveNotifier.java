@@ -161,7 +161,7 @@ public class ActiveNotifier implements FineGrainedNotifier {
       }
 
       private MessageBuilder startMessage() {
-         String url = notifier.getJenkinsUrl() + build.getUrl();
+         String url = notifier.getJenkinsUrl() + build.getUrl() + "/console";
          message.append("<a href='").append(url).append("'>");
          message.append(build.getProject().getDisplayName());
          message.append(" ");
